@@ -62,9 +62,16 @@ bot.start(async (ctx) => {
 
   const babyRef = db.collection("babies").doc(babyId);
 
+  const finder = ctx.message.from.username;
+  if (!finder) {
+    functions.logger.error(
+      `Couldn't get finder username: ${ctx.message.from.id}`
+    );
+    return ctx.reply("Oops! Something went wrong. Contact @aarontzy");
+  }
+
   try {
     let newBaby = false;
-    const finder = ctx.message.from.username;
     await db.runTransaction(async (t) => {
       const doc = await t.get(babyRef);
       if (!doc.exists) {
@@ -77,13 +84,6 @@ bot.start(async (ctx) => {
       }
       const { username } = doc.data() as Baby;
       if (!username) {
-        const finder = ctx.message.from.username;
-        if (!finder) {
-          functions.logger.error(
-            `Couldn't get finder username: ${ctx.message.from.id}`
-          );
-          return ctx.reply("Oops! Something went wrong. Contact @aarontzy");
-        }
         t.update(babyRef, {
           timestamp: +Date.now(),
           username: finder,
@@ -162,7 +162,7 @@ bot.command("leaderboard", async (ctx) => {
   let num = 0;
   topFive.forEach((doc) => {
     const { username, count } = doc.data() as User;
-    resp.push(`${++num}. ${username} - ${count} 👶`);
+    resp.push(`${++num}\\. ${username} \\- ${count} 👶`);
   });
   if (!num) {
     return ctx.reply(
@@ -170,6 +170,36 @@ bot.command("leaderboard", async (ctx) => {
     );
   }
   return ctx.reply(resp.join("\n"), { parse_mode: "MarkdownV2" });
+});
+
+bot.command("babies", async (ctx) => {
+  const finder = ctx.message.from.username;
+  if (!finder) {
+    functions.logger.error(
+      `Couldn't get finder username: ${ctx.message.from.id}`
+    );
+    return ctx.reply("Oops! Something went wrong. Contact @aarontzy");
+  }
+
+  const userRef = db.collection("users").doc(finder);
+  const babyRef = db.collection("babies");
+  const doc = await userRef.get();
+  const noBabyStr = "😪 You haven't found a baby yet! Start hunting!";
+  if (!doc.exists) {
+    return ctx.reply(noBabyStr);
+  }
+  const { count } = doc.data() as Info;
+  if (!count) {
+    return ctx.reply(noBabyStr);
+  }
+  const userBabiesRes = await babyRef.where("username", "==", finder).get();
+
+  const resp = `👶 You've found *${count}* babies\\!\n\nBabies found: \``;
+  const respStr: string[] = [];
+  userBabiesRes.forEach((res) => respStr.push(`\\#${res.id}`));
+  return ctx.reply(resp + respStr.join(", ") + "`", {
+    parse_mode: "MarkdownV2",
+  });
 });
 
 exports.babyHuntBot = functions.https.onRequest(async (request, response) => {
